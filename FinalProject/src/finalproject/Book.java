@@ -8,10 +8,11 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.text.NumberFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 /**
  *
@@ -28,8 +29,10 @@ public class Book implements Comparable<Object> {
     private int issuedQte;
     private String DateOfPurchase;
     private Connection con;
+    private static Locale loc;
+    private static ResourceBundle res;
 
-    public Book(int SN, String title, String author, String publisher, int price, int qte) throws Exception {
+    public Book(int SN, String title, String author, String publisher, int price, int qte, Locale loc) throws Exception {
         this.SN = SN;
         this.title = title;
         this.author = author;
@@ -41,8 +44,17 @@ public class Book implements Comparable<Object> {
         LocalDateTime now = LocalDateTime.now();
         this.DateOfPurchase = dtf.format(now);
         this.con = DBConnection.getSingleInstance();
+        this.loc = loc;
+        res = ResourceBundle.getBundle("FinalProject/Source", loc);
+
     }
 
+    /**
+     * adds a book to the database
+     *
+     * @param book a book class instance
+     * @throws Exception
+     */
     public void addBook(Book book) throws Exception {
         Connection con = DBConnection.getSingleInstance();
 
@@ -55,18 +67,26 @@ public class Book implements Comparable<Object> {
         stmt.executeUpdate(sql);
     }
 
+    /**
+     * adds the book a student is borrowing to the issued table
+     *
+     * @param b the book the student wants to borrow
+     * @param s the student borrowing it
+     * @return true or false
+     * @throws Exception
+     */
     public boolean issueBook(Book b, Student s) throws Exception {
         Connection con = DBConnection.getSingleInstance();
         Statement stmt = con.createStatement();
         ResultSet rs;
-        System.out.print("\nIssue Book Request:\n");
+        System.out.print(res.getString("issueBook1"));
         boolean inData = false;
         rs = stmt.executeQuery("SELECT * FROM Issued WHERE SN = " + b.getSN() + " AND StId = " + s.getStId() + ";");
         while (rs.next()) {
             inData = true;
         }
         if (inData) {
-            System.out.println("You have already borrowed this book!Request Denied!");
+            System.out.println(res.getString("issueBook2"));
             return false;
         }
         rs = stmt.executeQuery("SELECT * FROM Books WHERE SN = " + b.getSN() + ";");
@@ -79,7 +99,7 @@ public class Book implements Comparable<Object> {
             issued = rs.getInt("Issued") + 1;
             quantity = rs.getInt("Quantity") - 1;
             if (rs.getInt("Quantity") <= 0) {
-                System.out.println("The requested book is not Available! Request Denied!");
+                System.out.println(res.getString("issueBook3"));
                 return false;
             }
         }
@@ -100,7 +120,7 @@ public class Book implements Comparable<Object> {
         String sql = String.format("INSERT INTO Issued (ID,SN,StId,StName,StudentContact,IssuedDate) "
                 + "VALUES (%d,'%s',%d,'%s',%d,'%s');", newId, b.getSN(), s.getStId(), s.getName(), s.getContactNumber(), nowDate);
         stmt.executeUpdate(sql);
-        System.out.println("Request Accepted");
+        System.out.println(res.getString("issueBook4"));
 
         sql = "UPDATE Books SET Quantity = " + quantity + " WHERE SN = " + b.getSN() + ";";
         stmt.executeUpdate(sql);
@@ -109,25 +129,33 @@ public class Book implements Comparable<Object> {
         return true;
     }
 
+    /**
+     * removes the book a student is returning from the issued table
+     *
+     * @param b the book the student is returning
+     * @param s the student thats returning the book
+     * @return true or false
+     * @throws Exception
+     */
     public boolean returnBook(Book b, Student s) throws Exception {
         Connection con = DBConnection.getSingleInstance();
         Statement stmt = con.createStatement();
 
         ResultSet rs = stmt.executeQuery("SELECT * FROM Issued WHERE SN LIKE " + b.getSN() + ";");
-        System.out.print("\nReturn Book Request:\n");
+        System.out.print(res.getString("returnBook1"));
         int quantity = 0;
         int issued = 0;
         boolean borrowedBook = false;
         while (rs.next()) {
             if (rs.getInt("StId") == (s.getStId())) {
                 borrowedBook = true;
-                System.out.println("The book will be returned!");
+                System.out.println(res.getString("returnBook2"));
                 stmt.executeUpdate("DELETE FROM Issued WHERE SN LIKE " + b.getSN() + " AND StId LIKE " + s.getStId() + ";");
             }
         }
 
         if (!borrowedBook) {
-            System.out.println("You haven't borrowed this book!");
+            System.out.println(res.getString("returnBook3"));
             return false;
         }
         int newId = 100;
@@ -145,29 +173,43 @@ public class Book implements Comparable<Object> {
         return true;
     }
 
+    /**
+     * makes a map object with all the information from the table books
+     *
+     * @return a map
+     * @throws Exception
+     */
     public static Map<String, String> viewCatalog() throws Exception {
+        NumberFormat currencyForm = NumberFormat.getCurrencyInstance(loc);
+
         Connection con = DBConnection.getSingleInstance();
         Statement stmt = con.createStatement();
 
         HashMap<String, String> map = new HashMap<>();
         ResultSet rs = stmt.executeQuery("SELECT * FROM Books;");
-        System.out.print("\nCatalog:\n");
+        System.out.print(res.getString("viewCatalog1"));
         while (rs.next()) {
             map.put(rs.getString("SN"), " | Title = " + rs.getString("Title")
-                    + " | Author = " + rs.getString("Author") + " | Publisher = " + rs.getString("Publisher") + " | Price = " + rs.getInt("Price")
+                    + " | Author = " + rs.getString("Author") + " | Publisher = " + rs.getString("Publisher") + " | Price = " + currencyForm.format(rs.getInt("Price"))
                     + " | Quantity = " + rs.getInt("Quantity") + " | Issued = " + rs.getInt("Issued") + " | Date = " + rs.getString("Date") + "\n\n");
         }
 
         return map;
     }
 
+    /**
+     * makes a map object with all the information from the table issued
+     *
+     * @return a map
+     * @throws Exception
+     */
     public static Map<String, String> viewIssuedBooks() throws Exception {
         Connection con = DBConnection.getSingleInstance();
         Statement stmt = con.createStatement();
 
         HashMap<String, String> map = new HashMap<>();
         ResultSet rs = stmt.executeQuery("SELECT * FROM Issued;");
-        System.out.print("\nIssued Books:\n");
+        System.out.print(res.getString("viewIssued1"));
         while (rs.next()) {
             map.put(rs.getString("SN"), "ID = " + rs.getInt("ID") + " | SN = " + rs.getString("SN")
                     + " | StId= " + rs.getString("StId") + " | StName = " + rs.getString("StName") + " | StudentContact = " + rs.getString("StudentContact")
